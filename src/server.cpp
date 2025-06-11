@@ -79,9 +79,7 @@ struct Compositor {
 
 auto Compositor::init() -> coop::Async<bool> {
     coop_unwrap_mut(sock, create_udp_socket(0, data_port));
-    data_sock    = std::move(sock);
-    auto& runner = *co_await coop::reveal_runner();
-    runner.push_task(data_reader_main(), &data_reader_task);
+    data_sock = std::move(sock);
     co_return true;
 }
 
@@ -238,7 +236,9 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
         coop_ensure(co_await client.parser.send_packet(proto::PeerID{id}, header.id));
         if(count_active_peers() == 2) {
             LOG_INFO(logger, "starting compose task");
-            (co_await coop::reveal_runner())->push_task(compose_main(), &compose_task);
+            auto& runner = *co_await coop::reveal_runner();
+            runner.push_task(data_reader_main(), &data_reader_task);
+            runner.push_task(compose_main(), &compose_task);
         }
         co_return true;
     }
@@ -258,6 +258,7 @@ auto Compositor::remove_client(ClientData& client) -> void {
     if(count_active_peers() == 1) {
         LOG_INFO(logger, "stopping compose task");
         compose_task.cancel();
+        data_reader_task.cancel();
     }
 }
 
@@ -289,8 +290,7 @@ auto async_main() -> coop::Async<bool> {
     coop_ensure(co_await server.start(control_port));
 
     // wait until finished
-    co_await compositor.compose_task.join();
-    co_await compositor.data_reader_task.join();
+    co_await server.task.join();
     co_return true;
 }
 } // namespace
