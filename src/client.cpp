@@ -1,10 +1,8 @@
-#include <vector>
-
 #include <coop/thread.hpp>
 
 #include "config.hpp"
 #include "jitter-buffer.hpp"
-#include "macros/coop-unwrap.hpp"
+#include "macros/logger.hpp"
 #include "net.hpp"
 #include "net/packet-parser.hpp"
 #include "net/tcp/client.hpp"
@@ -14,7 +12,12 @@
 #include "util/argument-parser.hpp"
 #include "util/critical.hpp"
 
+#define CUTIL_MACROS_PRINT_FUNC(...) LOG_ERROR(logger, __VA_ARGS__)
+#include "macros/coop-unwrap.hpp"
+
 namespace {
+auto logger = Logger("CHEAPTALK");
+
 template <class T>
 auto ceil(T a, T b) -> T {
     return (a + b - 1) / b;
@@ -71,7 +74,7 @@ loop:
     // ensure_a(addr.ss_family == AF_INET && ((sockaddr_in*)&addr)->sin_addr.s_addr == htonl(net::sock::build_ipv4_addr(127, 0, 0, 1)));
     ensure_a(read > ssize_t(sizeof(proto::ComposedSamplesHeader)));
     packet.resize(read);
-    PRINT("downloaded {} bytes", read);
+    LOG_DEBUG(logger, "downloaded {} bytes", read);
 
     auto [lock, download_buffer] = critical_download_buffer.access();
     download_buffer.push(std::move(packet));
@@ -99,14 +102,14 @@ auto Context::init() -> coop::Async<bool> {
         co_return;
     };
     control_sock.on_closed = [] {
-        PRINT("disconnected");
+        LOG_WARN(logger, "disconnected");
         std::quick_exit(1);
     };
     coop_ensure(co_await control_sock.connect(server_addr, server_control_port));
     coop_unwrap(server_addr_v4, get_socket_addr(control_sock.sock.fd));
     coop_unwrap(response, co_await parser.receive_response<proto::PeerID>(proto::Join{peer_name, client_data_port}));
     peer_id = response.id;
-    PRINT("obtained peer id {}", response.id);
+    LOG_INFO(logger, "obtained peer id {}", response.id);
     coop_unwrap_mut(sock, create_udp_socket(0, client_data_port));
     data_sock   = std::move(sock);
     upload_addr = create_sock_addr(server_addr_v4, server_data_port);
@@ -127,7 +130,7 @@ auto Context::upload_samples() -> bool {
         {
             const auto bytes_before = to_encode.size() * sizeof(float);
             const auto bytes_after  = packet.size() - sizeof(proto::SamplesHeader);
-            PRINT("encoded {} bytes to {} bytes({}%)", bytes_before, bytes_after, 100.0 * bytes_after / bytes_before);
+            LOG_DEBUG(logger, "encoded {} bytes to {} bytes({}%)", bytes_before, bytes_after, 100.0 * bytes_after / bytes_before);
         }
 
         auto& header   = *std::bit_cast<proto::SamplesHeader*>(packet.data());
@@ -135,7 +138,7 @@ auto Context::upload_samples() -> bool {
         header.peer_id = peer_id;
         const auto ret = sendto(data_sock.as_handle(), packet.data(), packet.size(), 0, (sockaddr*)&upload_addr, sizeof(upload_addr));
         if(ret != ssize_t(packet.size())) {
-            WARN("failed to upload packet ret={} errno={}({})", ret, errno, strerror(errno));
+            LOG_ERROR(logger, "failed to upload packet ret={} errno={}({})", ret, errno, strerror(errno));
         }
     }
     return true;
@@ -165,7 +168,7 @@ auto on_playback(float* const buffer, const size_t num_samples) -> size_t {
     constexpr auto error_value = 0;
 
     auto& rem = context.playback_reminder;
-    PRINT("playback request={} rem={}", num_samples, rem.size());
+    LOG_DEBUG(logger, "playback request={} rem={}", num_samples, rem.size());
     if(rem.size() >= num_samples) {
         // no need to touch jitter buffer
         goto copy;
@@ -176,12 +179,12 @@ auto on_playback(float* const buffer, const size_t num_samples) -> size_t {
         if(stage.empty()) {
             unwrap_v(samples, context.decoder.packet_loss(config::samples_per_packet));
             append<float>(rem, samples);
-            WARN("buffer underrun");
+            LOG_WARN(logger, "buffer underrun");
         } else {
             const auto to_decode = std::span{stage}.subspan(sizeof(proto::ComposedSamplesHeader));
             unwrap_v(samples, context.decoder.decode(to_decode));
             append<float>(rem, samples);
-            PRINT("shifted rem={}", rem.size());
+            LOG_DEBUG(logger, "shifted rem={}", rem.size());
             download_buffer.shift(1);
         }
     }

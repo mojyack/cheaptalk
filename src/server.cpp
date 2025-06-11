@@ -8,7 +8,7 @@
 
 #include "config.hpp"
 #include "jitter-buffer.hpp"
-#include "macros/coop-unwrap.hpp"
+#include "macros/logger.hpp"
 #include "net.hpp"
 #include "net/packet-parser.hpp"
 #include "net/tcp/server.hpp"
@@ -17,7 +17,12 @@
 #include "util/argument-parser.hpp"
 #include "util/fd.hpp"
 
+#define CUTIL_MACROS_PRINT_FUNC(...) LOG_ERROR(logger, __VA_ARGS__)
+#include "macros/coop-unwrap.hpp"
+
 namespace {
+auto logger = Logger("CHEAPTALK_SERVER");
+
 struct ReadSerial {
     static auto is_valid(const net::BytesArray& item) -> bool {
         return !item.empty();
@@ -97,7 +102,7 @@ loop:
     ensure_a(peers.size() > header.peer_id && peers[header.peer_id]);
 
     auto& peer = *peers[header.peer_id];
-    PRINT("push buffer peer={}", int(header.peer_id));
+    LOG_DEBUG(logger, "push buffer peer={}", int(header.peer_id));
     peer.jitter_buffer.push(std::move(packet));
 #undef error_act
     goto loop;
@@ -128,7 +133,7 @@ loop:
         auto& cache = decoded.emplace_back();
         cache.peer  = &peer;
         if(stage.empty()) {
-            WARN("peer {} has no packet to send", peer.name);
+            LOG_WARN(logger, "peer {} has no packet to send", peer.name);
             unwrap_a_mut(samples, peer.decoder.packet_loss(config::samples_per_packet));
             cache.samples = std::move(samples);
         } else {
@@ -174,11 +179,11 @@ loop:
     const auto loop_end = std::chrono::system_clock::now();
     if(next_wakeup > loop_end) {
         const auto free = std::chrono::duration_cast<std::chrono::microseconds>(next_wakeup - loop_end);
-        PRINT("compose done, free={:.2}%", 100.0 * free.count() / interval.count());
+        LOG_DEBUG(logger, "compose done, free={:.2}%", 100.0 * free.count() / interval.count());
         co_await coop::sleep(next_wakeup - loop_end);
     } else {
         const auto over = std::chrono::duration_cast<std::chrono::microseconds>(loop_end - next_wakeup);
-        WARN("composition not completed in time, over={:.2}%", 100.0 * over.count() / interval.count());
+        LOG_ERROR(logger, "composition not completed in time, over={:.2}%", 100.0 * over.count() / interval.count());
         next_wakeup = loop_end;
     }
     goto loop;
@@ -220,7 +225,7 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
         const auto sock_fd = std::bit_cast<net::sock::SocketClientData*>(&client_data)->sock.fd;
         coop_unwrap(addr, get_socket_addr(sock_fd));
         coop_unwrap(id, allocate_peer());
-        PRINT("new peer name={} id={} addr={}:{}", request.name, id, addr, request.port);
+        LOG_INFO(logger, "new peer name={} id={} addr={}:{}", request.name, id, addr, request.port);
 
         auto peer  = std::unique_ptr<Peer>(new Peer());
         peer->name = std::move(request.name);
@@ -232,7 +237,7 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
 
         coop_ensure(co_await client.parser.send_packet(proto::PeerID{id}, header.id));
         if(count_active_peers() == 2) {
-            PRINT("starting compose task");
+            LOG_INFO(logger, "starting compose task");
             (co_await coop::reveal_runner())->push_task(compose_main(), &compose_task);
         }
         co_return true;
@@ -248,10 +253,10 @@ auto Compositor::remove_client(ClientData& client) -> void {
     }
     ensure(peers[client.peer_id]);
     auto& peer = *peers[client.peer_id];
-    PRINT("remove peer name={} id={}", peer.name, client.peer_id);
+    LOG_INFO(logger, "remove peer name={} id={}", peer.name, client.peer_id);
     peers[client.peer_id].reset();
     if(count_active_peers() == 1) {
-        PRINT("stopping compose task");
+        LOG_INFO(logger, "stopping compose task");
         compose_task.cancel();
     }
 }
