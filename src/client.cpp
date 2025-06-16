@@ -106,7 +106,7 @@ auto Context::init() -> coop::Async<bool> {
         std::quick_exit(1);
     };
     coop_ensure(co_await control_sock.connect(server_addr, server_control_port));
-    coop_unwrap(server_addr_v4, get_socket_addr(control_sock.sock.fd));
+    coop_unwrap(server_addr_v4, get_peer_addr(control_sock.sock.fd));
     coop_unwrap(response, co_await parser.receive_response<proto::PeerID>(proto::Join{peer_name, client_data_port}));
     peer_id = response.id;
     LOG_INFO(logger, "obtained peer id {}", response.id);

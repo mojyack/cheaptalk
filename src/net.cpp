@@ -3,10 +3,10 @@
 #include "macros/assert.hpp"
 #include "net.hpp"
 
-auto get_socket_addr(const int fd) -> std::optional<uint32_t> {
+auto get_peer_addr(const int fd) -> std::optional<uint32_t> {
     auto addr = sockaddr_storage();
     auto len  = socklen_t(sizeof(addr));
-    ensure(getsockname(fd, (sockaddr*)&addr, &len) == 0, "errno={}({})", errno, strerror(errno));
+    ensure(getpeername(fd, (sockaddr*)&addr, &len) == 0, "errno={}({})", errno, strerror(errno));
     if(addr.ss_family == AF_INET) {
         return ntohl(((sockaddr_in*)&addr)->sin_addr.s_addr);
     } else {

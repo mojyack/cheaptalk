@@ -221,9 +221,9 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
         coop_ensure(client.peer_id == -1);
 
         const auto sock_fd = std::bit_cast<net::sock::SocketClientData*>(&client_data)->sock.fd;
-        coop_unwrap(addr, get_socket_addr(sock_fd));
+        coop_unwrap(addr, get_peer_addr(sock_fd));
         coop_unwrap(id, allocate_peer());
-        LOG_INFO(logger, "new peer name={} id={} addr={}:{}", request.name, id, addr, request.port);
+        LOG_INFO(logger, "new peer name={} id={} addr={:X}:{}", request.name, id, addr, request.port);
 
         auto peer  = std::unique_ptr<Peer>(new Peer());
         peer->name = std::move(request.name);
