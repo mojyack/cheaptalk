@@ -154,11 +154,6 @@ auto init(const size_t capture_rate, const size_t playback_rate) -> Context* {
         SPA_DIRECTION_OUTPUT);
     ensure(context->playback_stream.get() != NULL);
 
-    pw_main_loop_run(context->main_loop.get());
-
-    context.reset();
-    pw_deinit();
-
     return context.release();
 }
 
