@@ -1,3 +1,5 @@
+#include <cstring>
+
 #include <netinet/in.h>
 
 #include "macros/assert.hpp"
