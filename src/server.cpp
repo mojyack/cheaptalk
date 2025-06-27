@@ -66,6 +66,7 @@ struct Compositor {
     coop::TaskHandle                   data_reader_task;
     coop::TaskHandle                   compose_task;
     std::vector<std::unique_ptr<Peer>> peers;
+    size_t                             distribute_serial = 0uz;
 
     auto data_reader_main() -> coop::Async<void>;
     auto compose_main() -> coop::Async<void>;
@@ -115,7 +116,6 @@ auto Compositor::compose_main() -> coop::Async<void> {
         std::vector<float> samples;
     };
 
-    auto serial      = size_t(0);
     auto next_wakeup = std::chrono::system_clock::now();
 loop:
     // decode uploaded packets
@@ -165,12 +165,12 @@ loop:
 
         // send
         auto& header   = *std::bit_cast<proto::ComposedSamplesHeader*>(packet.data());
-        header.serial  = serial;
+        header.serial  = distribute_serial;
         const auto ret = sendto(data_sock.as_handle(), packet.data(), packet.size(), 0, (sockaddr*)&peer.addr, sizeof(peer.addr));
         ensure_a(ret == ssize_t(packet.size()), "failed to send packet to peer {} ret={} errno={}({})", peer.name, ret, errno, strerror(errno));
 #undef error_act
     }
-    serial += 1;
+    distribute_serial += 1;
 
     // sync to clock
     next_wakeup += interval;
