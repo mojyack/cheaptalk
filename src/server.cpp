@@ -68,20 +68,29 @@ struct Compositor {
     std::vector<std::unique_ptr<Peer>> peers;
     size_t                             distribute_serial = 0uz;
 
+    auto start_audio_processing(coop::Runner& runner) -> bool;
+    auto stop_audio_processing() -> void;
     auto data_reader_main() -> coop::Async<void>;
     auto compose_main() -> coop::Async<void>;
     auto allocate_peer() -> std::optional<uint8_t>;
     auto count_active_peers() const -> size_t;
 
-    auto init() -> coop::Async<bool>;
     auto handle_payload(const net::ClientData& client_data, net::Header header, net::BytesRef payload) -> coop::Async<bool>;
     auto remove_client(ClientData& client) -> void;
 };
 
-auto Compositor::init() -> coop::Async<bool> {
-    coop_unwrap_mut(sock, create_udp_socket(0, data_port));
+auto Compositor::start_audio_processing(coop::Runner& runner) -> bool {
+    unwrap_mut(sock, create_udp_socket(0, data_port));
     data_sock = std::move(sock);
-    co_return true;
+    runner.push_task(data_reader_main(), &data_reader_task);
+    runner.push_task(compose_main(), &compose_task);
+    return true;
+}
+
+auto Compositor::stop_audio_processing() -> void {
+    compose_task.cancel();
+    data_reader_task.cancel();
+    data_sock.close();
 }
 
 auto Compositor::data_reader_main() -> coop::Async<void> {
@@ -235,10 +244,8 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
 
         coop_ensure(co_await client.parser.send_packet(proto::PeerID{id}, header.id));
         if(count_active_peers() == 2) {
-            LOG_INFO(logger, "starting compose task");
-            auto& runner = *co_await coop::reveal_runner();
-            runner.push_task(data_reader_main(), &data_reader_task);
-            runner.push_task(compose_main(), &compose_task);
+            LOG_INFO(logger, "starting audio processing");
+            coop_ensure(start_audio_processing(*co_await coop::reveal_runner()));
         }
         co_return true;
     }
@@ -256,16 +263,13 @@ auto Compositor::remove_client(ClientData& client) -> void {
     LOG_INFO(logger, "remove peer name={} id={}", peer.name, client.peer_id);
     peers[client.peer_id].reset();
     if(count_active_peers() == 1) {
-        LOG_INFO(logger, "stopping compose task");
-        compose_task.cancel();
-        data_reader_task.cancel();
+        LOG_INFO(logger, "stopping audio processing");
+        stop_audio_processing();
     }
 }
 
 auto async_main() -> coop::Async<bool> {
-    // setup compositor
     auto compositor = Compositor();
-    coop_ensure(co_await compositor.init());
 
     // setup control socket
     auto server         = net::tcp::TCPServerBackend();
