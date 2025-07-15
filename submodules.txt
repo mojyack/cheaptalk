@@ -1,3 +1,3 @@
-cutil https://github.com/mojyack/cutil.git
-cutil-macros https://github.com/mojyack/cutil-macros.git
-netprotocol https://github.com/mojyack/netprotocol.git
+cutil https://github.com/mojyack/cutil.git b0207de1edef49ecd0c1ca9e403ac4e2f6851889
+cutil-macros https://github.com/mojyack/cutil-macros.git 5712cf2f1f585681635c82713741796de33bd7aa
+netprotocol https://github.com/mojyack/netprotocol.git bbf7b01c216cf56b37da741d9cc766b0a090a91a

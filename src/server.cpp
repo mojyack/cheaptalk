@@ -229,8 +229,7 @@ auto Compositor::handle_payload(const net::ClientData& client_data, const net::H
         coop_unwrap_mut(request, (serde::load<net::BinaryFormat, proto::Join>(payload)));
         coop_ensure(client.peer_id == -1);
 
-        const auto sock_fd = std::bit_cast<net::sock::SocketClientData*>(&client_data)->sock.fd;
-        coop_unwrap(addr, get_peer_addr(sock_fd));
+        coop_unwrap(addr, net::tcp::TCPServerBackend::get_peer_addr_ipv4(client_data));
         coop_unwrap(id, allocate_peer());
         LOG_INFO(logger, "new peer name={} id={} addr={:X}:{}", request.name, id, addr, request.port);
 

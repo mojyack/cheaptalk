@@ -5,17 +5,6 @@
 #include "macros/assert.hpp"
 #include "net.hpp"
 
-auto get_peer_addr(const int fd) -> std::optional<uint32_t> {
-    auto addr = sockaddr_storage();
-    auto len  = socklen_t(sizeof(addr));
-    ensure(getpeername(fd, (sockaddr*)&addr, &len) == 0, "errno={}({})", errno, strerror(errno));
-    if(addr.ss_family == AF_INET) {
-        return ntohl(((sockaddr_in*)&addr)->sin_addr.s_addr);
-    } else {
-        bail("unimplemented address family {}", addr.ss_family);
-    }
-}
-
 auto create_sock_addr(const uint32_t addr, const uint16_t port) -> sockaddr_in {
     auto sockaddr            = sockaddr_in();
     sockaddr.sin_family      = AF_INET;
